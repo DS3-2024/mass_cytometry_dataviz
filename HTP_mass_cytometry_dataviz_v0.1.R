@@ -145,6 +145,10 @@ CD45_cells_clusters_data |> filter(!str_detect(Cell_cluster_name, "EXCLUDE")) |>
 CD45_cells_clusters_data |> distinct(meta20_cluster, meta30_cluster, Cell_cluster_name) |> arrange(meta20_cluster)
 #
 
+### 1.2.1 Read in cluster_24_info
+CD45_cells_cluster_24_info <- CD45_cells_cluster_24_info_file |> read_tsv()
+#
+
 
 ## 1.3 Read in tSNE data ----
 CD45_cells_tSNE_data <- CD45_cells_tSNE_data_file |> 
@@ -260,6 +264,7 @@ CD45_cells_tSNE_data |>
     subtitle = "reduced point size + alpha = 0.01"
   )
 # Color by density
+renv::install("LKremer/ggpointdensity") 
 library("ggpointdensity")
 CD45_cells_tSNE_data |> 
   ggplot(aes(TSNE1, TSNE2)) +
@@ -327,7 +332,7 @@ CD45_cells_tSNE_data |>
   facet_wrap(~ Karyotype) +
   scale_color_manual(values = standard_colors)
 #
-# Color by density + split by Karyotype (same color scale?)
+# Color by density + split by Karyotype (but same color scale?)
 CD45_cells_tSNE_data |> 
   inner_join(htp_meta_data) |> 
   ggplot(aes(TSNE1, TSNE2)) +
@@ -357,12 +362,12 @@ CD45_cells_tSNE_data |>
     subtitle = "reduced point size + custom density function"
   )
 # Normalized density per facet
-renv::install("LKremer/ggpointdensity") # requires dev version
+# currently requires dev version of ggpoint density
 CD45_cells_tSNE_data |> 
   inner_join(htp_meta_data) |> 
   ggplot(aes(TSNE1, TSNE2)) +
   # geom_pointdensity(size = 0.1) +
-  ggpointdensity::stat_pointdensity(aes(col = stat(ndensity)), size = 0.1) + 
+  ggpointdensity::stat_pointdensity(aes(col = after_stat(ndensity)), size = 0.1) + 
   scale_color_viridis_c() +
   facet_wrap(~ Karyotype) +
   theme(aspect.ratio = 1) +
@@ -398,8 +403,9 @@ CD45_tSNE_data_sample_subset <- CD45_cells_tSNE_data |>
 CD45_tSNE_data_sample_subset |> 
   count(Karyotype, Sex)
 #
-CD45_tSNE_data_sample_subset |> 
-  filter(LabID %in% htp_meta_CD45_tSNE_data_sample_subset$LabID) |> 
+CD45_cells_tSNE_data |> 
+  inner_join(htp_meta_data) |> 
+  filter(LabID %in% CD45_tSNE_data_sample_subset$LabID) |>
   ggplot(aes(TSNE1, TSNE2)) +
   geom_pointdensity(size = 0.1) +
   scale_color_viridis_c() +
@@ -482,13 +488,13 @@ CD45_cells_tSNE_data |>
 # better control if we save and name colors
 hues::iwanthue(20)
 cell_cluster_colors <- c("#636ad8","#60b646","#af5dcb","#a9b539","#d14396","#5bbe7d","#d34258","#4bb7a7","#d0522d","#5faadc","#d69b3a","#5778be","#757327","#9b72b8","#447d41","#de87bb","#b2ad6a","#9f4866","#a26431","#de8373", "grey", "grey", "grey", "grey")
-names(cell_cluster_colors) <- cell_cluster_24_info |> arrange(num) |> pull(label)
+names(cell_cluster_colors) <- CD45_cells_cluster_24_info |> arrange(num) |> pull(label)
 cell_cluster_colors
 #
 t20 <- CD45_cells_tSNE_data |> 
   inner_join(htp_meta_data) |> 
   inner_join(CD45_cells_clusters_data) |> 
-  inner_join(cell_cluster_24_info) |> 
+  inner_join(CD45_cells_cluster_24_info) |> 
   # To put less abundant clusters on top:
   arrange(num) |> # sort by overall cluster percentage
   mutate(label = fct_inorder(label)) |>  # to control plotting order
@@ -517,13 +523,15 @@ t20 <- t20 +
 t20
 #
 ### 2.3.3 Adding cluster labels ----
-cell_cluster_tSNE_labels <- htp_meta_CD45_tSNE_data |> 
+cell_cluster_tSNE_labels <- CD45_cells_tSNE_data |> 
+  inner_join(htp_meta_data) |> 
+  inner_join(CD45_cells_clusters_data) |> 
   group_by(Cell_cluster_name) |> 
   summarize(
     TSNE1 = median(TSNE1), # set median xy coordinates of each cluster as label position
     TSNE2 = median(TSNE2)
   ) |> 
-  inner_join(cell_cluster_24_info) # numbered by overall percentage
+  inner_join(CD45_cells_cluster_24_info) # numbered by overall percentage
 cell_cluster_tSNE_labels
 #
 t20 <- t20 +
@@ -546,7 +554,7 @@ t20 + facet_wrap(~ Karyotype)
 t_expr <- CD45_cells_tSNE_data |> 
   inner_join(htp_meta_data) |> 
   inner_join(CD45_cells_clusters_data) |> 
-  inner_join(cell_cluster_24_info) |> 
+  inner_join(CD45_cells_cluster_24_info) |> 
   filter(!str_detect(Cell_cluster_name, "EXCLUDE")) |> # remove excluded clusters
   inner_join(CD45_cells_marker_expression_data) |> 
   filter(feature %in% c("CD3", "CD4", "CD8a", "CD19")) |> 
@@ -588,7 +596,7 @@ fc_limits <- CD45_betreg_results |>
 #
 t_betareg_fc <- CD45_cells_tSNE_data |> 
   inner_join(CD45_cells_clusters_data) |> 
-  inner_join(cell_cluster_24_info) |> 
+  inner_join(CD45_cells_cluster_24_info) |> 
   filter(!str_detect(Cell_cluster_name, "EXCLUDE")) |> # remove excluded clusters
   inner_join(CD45_betreg_results) |> 
   ggplot(aes(TSNE1, TSNE2, color)) +
